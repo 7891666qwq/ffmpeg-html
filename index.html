@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFmpeg.wasm 格式转换器 · 极光版</title>
+    <style>
+        /* ===== 全局重置与字体 ===== */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #070b14;
+            --card: rgba(18, 24, 38, 0.75);
+            --card-border: rgba(100, 140, 255, 0.15);
+            --text: #e8edf8;
+            --text-dim: #8b9bb8;
+            --accent: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.4);
+            --success: #22c55e;
+            --danger: #ef4444;
+            --warn: #f59e0b;
+            --radius: 16px;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+            line-height: 1.6;
+            /* 极光背景 */
+            background-image: 
+                radial-gradient(ellipse 80% 60% at 20% 0%, rgba(99, 102, 241, 0.15), transparent),
+                radial-gradient(ellipse 60% 50% at 80% 20%, rgba(168, 85, 247, 0.12), transparent),
+                radial-gradient(ellipse 50% 40% at 50% 100%, rgba(34, 197, 94, 0.08), transparent);
+            background-attachment: fixed;
+        }
+        /* 细网格纹理 */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+            background-size: 48px 48px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .container {
+            max-width: 920px;
+            width: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ===== 标题区 ===== */
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 50%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+        .header .subtitle {
+            color: var(--text-dim);
+            font-size: 0.88rem;
+            max-width: 560px;
+            margin: 0 auto;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 14px;
+            padding: 5px 14px;
+            border-radius: 100px;
+            background: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.25);
+            font-size: 0.75rem;
+            color: #a5b4fc;
+        }
+        .badge .pulse-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+            animation: blink 2s infinite;
+        }
+        @keyframes blink { 50% { opacity: 0.4; } }
+
+        /* ===== 卡片 ===== */
+        .card {
+            background: var(--card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 18px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+        }
+        .card:hover {
+            border-color: rgba(100, 140, 255, 0.3);
+            box-shadow: 0 4px 32px rgba(99, 102, 241, 0.08);
+        }
+
+        /* ===== 表单元素 ===== */
+        label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            letter-spacing: 0.02em;
+        }
+        label .icon { font-size: 0.9rem; }
+
+        /* 文件选择 */
+        .file-drop {
+            position: relative;
+            border: 2px dashed rgba(100, 140, 255, 0.25);
+            border-radius: 12px;
+            padding: 28px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s;
+            background: rgba(15, 20, 35, 0.6);
+        }
+        .file-drop:hover {
+            border-color: rgba(100, 140, 255, 0.5);
+            background: rgba(99, 102, 241, 0.06);
+            transform: translateY(-1px);
+        }
+        .file-drop.dragover {
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.12);
+            box-shadow: 0 0 0 4px var(--accent-glow);
+        }
+        .file-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .file-drop .drop-icon { font-size: 2rem; margin-bottom: 8px; opacity: 0.7; }
+        .file-drop .drop-text { font-size: 0.9rem; color: var(--text); font-weight: 500; }
+        .file-drop .drop-hint { font-size: 0.75rem; color: var(--text-dim); margin-top: 4px; }
+
+        .file-info {
+            margin-top: 12px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            background: rgba(15, 20, 35, 0.8);
+            border: 1px solid rgba(100, 140, 255, 0.12);
+            font-size: 0.82rem;
+            color: var(--text-dim);
+            display: none;
+        }
+        .file-info.show { display: block; animation: fadeIn 0.3s; }
+        .file-info strong { color: var(--text); font-weight: 500; }
+        .file-info .kind-tag {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .kind-tag.video { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
+        .kind-tag.audio { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+        .kind-tag.image { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+        /* 下拉框网格 */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-top: 18px;
+        }
+        .grid-2 > div { min-width: 0; }
+
+        select {
+            width: 100%;
+            padding: 12px 36px 12px 14px;
+            background: rgba(10, 14, 25, 0.9) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b9bb8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E") no-repeat right 14px center;
+            border: 1px solid rgba(100, 140, 255, 0.2);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 0.88rem;
+            font-family: inherit;
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        select:hover:not(:disabled) { border-color: rgba(100, 140, 255, 0.4); }
+        select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+        select:disabled { opacity: 0.35; cursor: not-allowed; }
+        select option { background: #0f1422; color: var(--text); padding: 8px; }
+
+        .hint {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            margin-top: 6px;
+            min-height: 1.2em;
+            transition: color 0.2s;
+        }
+        .hint.active { color: #a5b4fc; }
+
+        /* ===== 按钮 ===== */
+        .btn {
+            width: 100%;
+            padding: 15px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.25s;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #fff;
+            margin-top: 20px;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+        }
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px rgba(99, 102, 241, 0.45);
+        }
+        .btn-primary:active:not(:disabled) { transform: translateY(0); }
+        .btn-primary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        /* 按钮高光扫过 */
+        .btn-primary:not(:disabled)::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+            transition: left 0.6s;
+        }
+        .btn-primary:not(:disabled):hover::before { left: 100%; }
+
+        /* ===== 状态栏 ===== */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            background: rgba(10, 14, 25, 0.7);
+            border: 1px solid rgba(100, 140, 255, 0.1);
+            margin-bottom: 16px;
+            font-size: 0.84rem;
+        }
+        .status-dot {
+            width: 9px; height: 9px;
+            border-radius: 50%;
+            background: #64748b;
+            flex-shrink: 0;
+            transition: all 0.3s;
+        }
+        .status-dot.ready {
+            background: var(--success);
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.6);
+        }
+        .status-dot.busy {
+            background: var(--warn);
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+            animation: pulse 1.2s infinite;
+        }
+        .status-dot.error {
+            background: var(--danger);
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+        }
+        @keyframes pulse { 50% { opacity: 0.35; } }
+        .status-text { color: var(--text-dim); }
+
+        /* ===== 日志 ===== */
+        .log-box {
+            background: rgba(8, 11, 20, 0.9);
+            border: 1px solid rgba(100, 140, 255, 0.1);
+            border-radius: 12px;
+            padding: 14px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+            font-size: 0.75rem;
+            line-height: 1.7;
+            color: #7a8ba8;
+            white-space: pre-wrap;
+            word-break: break-all;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(100,140,255,0.3) transparent;
+        }
+        .log-box::-webkit-scrollbar { width: 6px; }
+        .log-box::-webkit-scrollbar-thumb { background: rgba(100,140,255,0.3); border-radius: 3px; }
+        .log-box .err { color: #f87171; }
+        .log-box .ok  { color: #4ade80; }
+        .log-box .cmd { color: #a5b4fc; }
+
+        /* ===== 下载区 ===== */
+        .download-area {
+            display: none;
+            margin-top: 18px;
+            padding: 22px;
+            border-radius: var(--radius);
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(16, 185, 129, 0.06));
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .download-area.show { display: block; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+        .download-area .dl-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            color: #86efac;
+            margin-bottom: 14px;
+        }
+        .download-area .dl-title .check {
+            width: 22px; height: 22px;
+            border-radius: 50%;
+            background: var(--success);
+            color: #070b14;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+        .btn-download {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 28px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: #fff;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.92rem;
+            transition: all 0.25s;
+            box-shadow: 0 6px 20px rgba(34, 197, 94, 0.3);
+        }
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 28px rgba(34, 197, 94, 0.45);
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 640px) {
+            body { padding: 20px 14px; }
+            .header h1 { font-size: 1.5rem; }
+            .grid-2 { grid-template-columns: 1fr; }
+            .card { padding: 18px; }
+        }
+
+        /* ===== 加载动画（骨架脉冲） ===== */
+        .skeleton {
+            animation: skeleton-loading 1.5s infinite;
+        }
+        @keyframes skeleton-loading {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        /* 工具类 */
+        .mt-16 { margin-top: 16px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- 头部 -->
+    <div class="header">
+        <h1>🎬 FFmpeg 格式转换器</h1>
+        <p class="subtitle">文件全程在浏览器本地处理，零上传，零服务器。基于 FFmpeg 的 WebAssembly 移植版。</p>
+        <div class="badge">
+            <span class="pulse-dot"></span>
+            <span id="badgeStatus">正在初始化核心…</span>
+        </div>
+    </div>
+
+    <!-- 文件选择卡片 -->
+    <div class="card">
+        <label><span class="icon">📁</span>选择输入文件</label>
+        <div class="file-drop" id="fileDrop">
+            <input type="file" id="fileInput" accept="video/*,audio/*,image/*,.mkv,.flv,.avi,.mov,.webm,.mp4,.ts,.m4v,.3gp,.wmv,.mp3,.wav,.aac,.flac,.ogg,.opus,.m4a,.png,.jpg,.jpeg,.gif,.webp,.bmp">
+            <div class="drop-icon">📤</div>
+            <div class="drop-text">点击选择或拖拽文件到这里</div>
+            <div class="drop-hint">支持视频 · 音频 · 图像，所有处理均在本地完成</div>
+        </div>
+        <div class="file-info" id="fileInfo"></div>
+    </div>
+
+    <!-- 转换设置卡片 -->
+    <div class="card">
+        <label><span class="icon">⚙️</span>转换设置</label>
+        <div>
+            <label style="margin-top:4px;">输出格式</label>
+            <select id="formatSelect">
+                <option value="">请先选择文件</option>
+            </select>
+            <div class="hint" id="formatHint"></div>
+        </div>
+
+        <div class="grid-2">
+            <div>
+                <label>视频编码</label>
+                <select id="codecSelect" disabled>
+                    <option value="">—</option>
+                </select>
+                <div class="hint" id="codecHint"></div>
+            </div>
+            <div>
+                <label>音频编码</label>
+                <select id="audioCodecSelect" disabled>
+                    <option value="">—</option>
+                </select>
+                <div class="hint" id="audioCodecHint"></div>
+            </div>
+        </div>
+
+        <button class="btn btn-primary" id="convertBtn" disabled>
+            <span>⚡</span> 开始转换
+        </button>
+    </div>
+
+    <!-- 状态与日志卡片 -->
+    <div class="card">
+        <div class="status-bar">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="status-text" id="statusText">正在加载 FFmpeg 核心（约 31 MB，首次较慢）…</span>
+        </div>
+        <div class="log-box" id="log"></div>
+    </div>
+
+    <!-- 下载区 -->
+    <div class="download-area" id="downloadArea">
+        <div class="dl-title">
+            <span class="check">✓</span>
+            <span>转换完成，文件已就绪</span>
+        </div>
+        <a class="btn-download" id="downloadLink" download>
+            <span>⬇</span> 下载文件
+        </a>
+    </div>
+</div>
+
+<script type="module">
+    import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js';
+    import { fetchFile, toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js';
+
+    // DOM 引用
+    const fileInput        = document.getElementById('fileInput');
+    const fileDrop         = document.getElementById('fileDrop');
+    const fileInfo         = document.getElementById('fileInfo');
+    const formatSel        = document.getElementById('formatSelect');
+    const codecSel         = document.getElementById('codecSelect');
+    const audioCodecSel    = document.getElementById('audioCodecSelect');
+    const formatHint       = document.getElementById('formatHint');
+    const codecHint        = document.getElementById('codecHint');
+    const audioCodecHint   = document.getElementById('audioCodecHint');
+    const convertBtn       = document.getElementById('convertBtn');
+    const downloadArea     = document.getElementById('downloadArea');
+    const downloadLink     = document.getElementById('downloadLink');
+    const logEl            = document.getElementById('log');
+    const statusDot        = document.getElementById('statusDot');
+    const statusText       = document.getElementById('statusText');
+    const badgeStatus      = document.getElementById('badgeStatus');
+
+    let ffmpeg = null;
+    let loaded = false;
+    let selectedFile = null;
+    let objectUrl = null;
+    let inputKind = null; // 'video' | 'audio' | 'image'
+
+    // ========== 格式库 ==========
+    const VIDEO_FORMATS = [
+        { value: 'mp4',  label: 'MP4 (H.264 / AAC)' },
+        { value: 'webm', label: 'WebM (VP8/VP9 / Vorbis)' },
+        { value: 'mkv',  label: 'MKV (Matroska)' },
+        { value: 'mov',  label: 'MOV (QuickTime)' },
+        { value: 'avi',  label: 'AVI' },
+        { value: 'flv',  label: 'FLV' },
+        { value: 'ts',   label: 'TS (MPEG-TS)' },
+        { value: 'ogv',  label: 'OGV (Theora)' },
+        { value: 'gif',  label: 'GIF (动图)' },
+    ];
+    const AUDIO_FORMATS = [
+        { value: 'mp3',  label: 'MP3' },
+        { value: 'wav',  label: 'WAV' },
+        { value: 'aac',  label: 'AAC' },
+        { value: 'flac', label: 'FLAC' },
+        { value: 'ogg',  label: 'OGG (Vorbis)' },
+        { value: 'opus', label: 'Opus' },
+        { value: 'm4a',  label: 'M4A' },
+    ];
+    const IMAGE_FORMATS = [
+        { value: 'png',  label: 'PNG' },
+        { value: 'jpg',  label: 'JPG' },
+        { value: 'webp', label: 'WebP' },
+        { value: 'bmp',  label: 'BMP' },
+    ];
+
+    // ========== 视频容器 → 视频编码器 ==========
+    const VIDEO_CODECS_FOR_CONTAINER = {
+        mp4:  [
+            { value: 'libx264', label: 'H.264 (libx264) — 兼容性最好' },
+            { value: 'libx265', label: 'H.265 (libx265) — 体积更小' },
+            { value: 'mpeg4',   label: 'MPEG-4' },
+            { value: 'copy',    label: '复制原视频流（仅换容器）' },
+        ],
+        mov:  [
+            { value: 'libx264', label: 'H.264 (libx264)' },
+            { value: 'libx265', label: 'H.265 (libx265)' },
+            { value: 'mpeg4',   label: 'MPEG-4' },
+            { value: 'copy',    label: '复制原视频流' },
+        ],
+        mkv:  [
+            { value: 'libx264',    label: 'H.264 (libx264)' },
+            { value: 'libx265',    label: 'H.265 (libx265)' },
+            { value: 'libvpx',     label: 'VP8 (libvpx)' },
+            { value: 'libvpx-vp9', label: 'VP9 (libvpx-vp9)' },
+            { value: 'mpeg4',      label: 'MPEG-4' },
+            { value: 'copy',       label: '复制原视频流' },
+        ],
+        webm: [
+            { value: 'libvpx',     label: 'VP8 (libvpx) — WebM 推荐' },
+            { value: 'libvpx-vp9', label: 'VP9 (libvpx-vp9) — 高质量' },
+        ],
+        avi:  [
+            { value: 'mpeg4', label: 'MPEG-4' },
+            { value: 'copy',  label: '复制原视频流' },
+        ],
+        flv:  [
+            { value: 'libx264', label: 'H.264 (libx264)' },
+            { value: 'mpeg4',   label: 'MPEG-4' },
+            { value: 'copy',    label: '复制原视频流' },
+        ],
+        ts:   [
+            { value: 'libx264', label: 'H.264 (libx264)' },
+            { value: 'mpeg4',   label: 'MPEG-4' },
+            { value: 'copy',    label: '复制原视频流' },
+        ],
+        ogv:  [
+            { value: 'libtheora', label: 'Theora (libtheora)' },
+        ],
+        gif:  [
+            { value: 'gif', label: 'GIF（内置）' },
+        ],
+    };
+
+    // ========== 容器 → 音频编码器 ==========
+    const AUDIO_CODECS_FOR_CONTAINER = {
+        mp3:  [{ value: 'libmp3lame', label: 'MP3 (libmp3lame) — 标准' }],
+        wav:  [
+            { value: 'pcm_s16le', label: 'PCM 16-bit — 无损' },
+            { value: 'pcm_s24le', label: 'PCM 24-bit' },
+            { value: 'pcm_f32le', label: 'PCM 32-bit float' },
+        ],
+        aac:  [
+            { value: 'aac',  label: 'AAC — 标准' },
+            { value: 'copy', label: '复制原音频流' },
+        ],
+        flac: [{ value: 'flac', label: 'FLAC — 无损压缩' }],
+        ogg:  [
+            { value: 'libvorbis', label: 'Vorbis (libvorbis)' },
+            { value: 'libopus',   label: 'Opus (libopus)' },
+            { value: 'flac',      label: 'FLAC' },
+        ],
+        opus: [{ value: 'libopus', label: 'Opus (libopus)' }],
+        m4a:  [
+            { value: 'aac',  label: 'AAC — 标准' },
+            { value: 'copy', label: '复制原音频流' },
+        ],
+        mp4:  [
+            { value: 'aac',        label: 'AAC — 标准' },
+            { value: 'libmp3lame', label: 'MP3 (libmp3lame)' },
+            { value: 'libopus',    label: 'Opus (libopus)' },
+            { value: 'ac3',        label: 'AC-3' },
+            { value: 'copy',       label: '复制原音频流' },
+        ],
+        mov:  [
+            { value: 'aac',        label: 'AAC' },
+            { value: 'libmp3lame', label: 'MP3' },
+            { value: 'pcm_s16le',  label: 'PCM 16-bit' },
+            { value: 'copy',       label: '复制原音频流' },
+        ],
+        mkv:  [
+            { value: 'aac',        label: 'AAC' },
+            { value: 'libmp3lame', label: 'MP3' },
+            { value: 'libvorbis',  label: 'Vorbis' },
+            { value: 'libopus',    label: 'Opus' },
+            { value: 'flac',       label: 'FLAC' },
+            { value: 'ac3',        label: 'AC-3' },
+            { value: 'copy',       label: '复制原音频流' },
+        ],
+        webm: [
+            { value: 'libvorbis', label: 'Vorbis — WebM 推荐' },
+            { value: 'libopus',   label: 'Opus' },
+        ],
+        avi:  [
+            { value: 'libmp3lame', label: 'MP3' },
+            { value: 'pcm_s16le',  label: 'PCM 16-bit' },
+            { value: 'copy',       label: '复制原音频流' },
+        ],
+        flv:  [
+            { value: 'libmp3lame', label: 'MP3' },
+            { value: 'aac',        label: 'AAC' },
+            { value: 'copy',       label: '复制原音频流' },
+        ],
+        ts:   [
+            { value: 'aac',        label: 'AAC' },
+            { value: 'libmp3lame', label: 'MP3' },
+            { value: 'ac3',        label: 'AC-3' },
+            { value: 'copy',       label: '复制原音频流' },
+        ],
+        ogv:  [
+            { value: 'libvorbis', label: 'Vorbis' },
+            { value: 'libopus',   label: 'Opus' },
+        ],
+        gif:  [],
+    };
+
+    // ========== 工具函数 ==========
+    function log(msg, cls = '') {
+        const line = document.createElement('div');
+        if (cls) line.className = cls;
+        line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(text, state = '') {
+        statusText.textContent = text;
+        statusDot.className = 'status-dot' + (state ? ' ' + state : '');
+        badgeStatus.textContent = text.length > 30 ? text.slice(0, 28) + '…' : text;
+    }
+
+    function updateButton() {
+        convertBtn.disabled = !(loaded && selectedFile && formatSel.value);
+    }
+
+    function detectKind(file) {
+        const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+        const mime = (file.type || '').toLowerCase();
+        const videoExts = ['mp4','webm','mkv','mov','avi','flv','ts','m4v','3gp','wmv','ogv'];
+        const audioExts = ['mp3','wav','aac','flac','ogg','opus','m4a','wma','aiff'];
+        const imageExts = ['png','jpg','jpeg','gif','webp','bmp','tiff','svg'];
+        if (mime.startsWith('video/') || videoExts.includes(ext)) return 'video';
+        if (mime.startsWith('audio/') || audioExts.includes(ext)) return 'audio';
+        if (mime.startsWith('image/') || imageExts.includes(ext)) return 'image';
+        return 'video';
+    }
+
+    // ========== 渲染下拉框 ==========
+    function renderFormatOptions(kind) {
+        formatSel.innerHTML = '';
+        
+        // 1. 如果输入的是视频，分为三组展示
+        if (kind === 'video') {
+            // 视频组
+            const vGroup = document.createElement('optgroup');
+            vGroup.label = '🎬 视频格式 (保留画面)';
+            VIDEO_FORMATS.forEach(f => vGroup.appendChild(createOption(f)));
+
+            // 音频组
+            const aGroup = document.createElement('optgroup');
+            aGroup.label = '🎵 音频格式 (仅提取声音)';
+            AUDIO_FORMATS.forEach(f => aGroup.appendChild(createOption(f)));
+
+            // 图像组
+            const iGroup = document.createElement('optgroup');
+            iGroup.label = '🖼️ 图像格式 (仅截取一帧)';
+            IMAGE_FORMATS.forEach(f => iGroup.appendChild(createOption(f)));
+
+            formatSel.appendChild(vGroup);
+            formatSel.appendChild(aGroup);
+            formatSel.appendChild(iGroup);
+            formatHint.textContent = '输入为视频，可提取画面、声音或截取封面';
+        
+        // 2. 如果输入的是音频，分为两组
+        } else if (kind === 'audio') {
+            const aGroup = document.createElement('optgroup');
+            aGroup.label = '🎵 音频格式 (推荐)';
+            AUDIO_FORMATS.forEach(f => aGroup.appendChild(createOption(f)));
+
+            const vGroup = document.createElement('optgroup');
+            vGroup.label = '🎬 视频格式 (生成黑屏或静态画面)';
+            VIDEO_FORMATS.forEach(f => vGroup.appendChild(createOption(f)));
+
+            formatSel.appendChild(aGroup);
+            formatSel.appendChild(vGroup);
+            formatHint.textContent = '输入为音频，可转换为其他音频格式或生成带封面的视频';
+
+        // 3. 如果输入的是图像，分为两组
+        } else if (kind === 'image') {
+            const iGroup = document.createElement('optgroup');
+            iGroup.label = '🖼️ 图像格式';
+            IMAGE_FORMATS.forEach(f => iGroup.appendChild(createOption(f)));
+
+            const vGroup = document.createElement('optgroup');
+            vGroup.label = '🎬 视频格式 (生成单帧/短时视频)';
+            VIDEO_FORMATS.forEach(f => vGroup.appendChild(createOption(f)));
+
+            formatSel.appendChild(iGroup);
+            formatSel.appendChild(vGroup);
+            formatHint.textContent = '输入为图像，可转换图片格式或将其转为视频';
+
+        // 4. 兜底
+        } else {
+            formatSel.innerHTML = '<option value="">请先选择文件</option>';
+            formatHint.textContent = '';
+            return;
+        }
+
+        formatHint.classList.add('active');
+        formatSel.selectedIndex = 0;
+        renderCodecOptions();
+    }
+
+    // 辅助函数：创建 option 元素
+    function createOption(f) {
+        const opt = document.createElement('option');
+        opt.value = f.value;
+        opt.textContent = f.label;
+        return opt;
+    }
+
+    function renderCodecOptions() {
+        const fmt = formatSel.value;
+        const isVideo = !!VIDEO_CODECS_FOR_CONTAINER[fmt];
+        const isAudio = AUDIO_FORMATS.some(f => f.value === fmt);
+        const isImage = IMAGE_FORMATS.some(f => f.value === fmt);
+
+        // 视频编码
+        codecSel.innerHTML = '';
+        if (!isVideo) {
+            codecSel.disabled = true;
+            codecSel.innerHTML = '<option value="">— 该容器不使用视频编码 —</option>';
+            codecHint.textContent = (isAudio || isImage) ? '音频 / 图像输出无需选择视频编码器' : '';
+            codecHint.classList.remove('active');
+        } else {
+            let codecs = VIDEO_CODECS_FOR_CONTAINER[fmt].slice();
+            if (inputKind === 'image') codecs = codecs.filter(c => c.value !== 'copy');
+            codecs.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.value;
+                opt.textContent = c.label;
+                codecSel.appendChild(opt);
+            });
+            codecSel.disabled = false;
+            codecHint.textContent = inputKind === 'image'
+                ? '图像转视频：会生成单帧 / 短时视频'
+                : `当前容器 ${fmt.toUpperCase()} 可用视频编码器`;
+            codecHint.classList.add('active');
+        }
+
+        // 音频编码
+        audioCodecSel.innerHTML = '';
+        const audioList = AUDIO_CODECS_FOR_CONTAINER[fmt] || [];
+        if (isImage && !isVideo) {
+            audioCodecSel.disabled = true;
+            audioCodecSel.innerHTML = '<option value="">— 该容器不包含音频 —</option>';
+            audioCodecHint.textContent = '图像输出无音频轨';
+            audioCodecHint.classList.remove('active');
+        } else if (audioList.length === 0) {
+            audioCodecSel.disabled = true;
+            audioCodecSel.innerHTML = '<option value="">— 该容器不支持音频 —</option>';
+            audioCodecHint.textContent = '例如 GIF 不包含音频';
+            audioCodecHint.classList.remove('active');
+        } else {
+            let list = audioList.slice();
+            if (inputKind === 'image') list = list.filter(c => c.value !== 'copy');
+            list.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.value;
+                opt.textContent = c.label;
+                audioCodecSel.appendChild(opt);
+            });
+            audioCodecSel.disabled = false;
+            audioCodecHint.textContent = `当前容器 ${fmt.toUpperCase()} 可用音频编码器`;
+            audioCodecHint.classList.add('active');
+        }
+
+        updateButton();
+    }
+
+    // ========== FFmpeg 加载 ==========
+    async function loadFFmpeg() {
+        if (loaded) return;
+        setStatus('正在加载 FFmpeg 核心…', 'busy');
+        try {
+            ffmpeg = new FFmpeg();
+            ffmpeg.on('log', ({ message }) => {
+                if (message.includes('frame=') || message.includes('size=')) return;
+                log(message);
+            });
+
+            const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';
+            const workerBase = `${location.origin}/ffmpeg`;
+            await ffmpeg.load({
+                coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+                wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+                classWorkerURL: `${workerBase}/worker.js`,
+            });
+
+            loaded = true;
+            setStatus('FFmpeg 核心已就绪', 'ready');
+            log('FFmpeg 核心加载完成', 'ok');
+            updateButton();
+        } catch (err) {
+            setStatus('FFmpeg 加载失败', 'error');
+            log('加载失败：' + err.message, 'err');
+            console.error(err);
+        }
+    }
+
+    // ========== 文件选择交互 ==========
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        handleFile(file);
+    });
+
+    // 拖拽支持
+    ['dragenter', 'dragover'].forEach(evt => {
+        fileDrop.addEventListener(evt, (e) => {
+            e.preventDefault();
+            fileDrop.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+        fileDrop.addEventListener(evt, (e) => {
+            e.preventDefault();
+            fileDrop.classList.remove('dragover');
+        });
+    });
+    fileDrop.addEventListener('drop', (e) => {
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            fileInput.files = e.dataTransfer.files;
+            handleFile(file);
+        }
+    });
+
+    function handleFile(file) {
+        selectedFile = file;
+        downloadArea.classList.remove('show');
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = null;
+
+        inputKind = detectKind(file);
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        const kindLabel = { video: '视频', audio: '音频', image: '图像' }[inputKind] || '未知';
+        const kindClass = inputKind;
+
+        fileInfo.innerHTML = `
+            <strong>${file.name}</strong>
+            <span class="kind-tag ${kindClass}">${kindLabel}</span>
+            <br>
+            <span style="font-size:0.75rem; opacity:0.7;">${sizeMB} MB · ${file.type || 'MIME 未知'}</span>
+        `;
+        fileInfo.classList.add('show');
+        log(`已选择：${file.name}（${sizeMB} MB，识别为 ${kindLabel}）`);
+
+        renderFormatOptions(inputKind);
+        updateButton();
+
+        if (!loaded) loadFFmpeg();
+    }
+
+    formatSel.addEventListener('change', () => {
+        renderCodecOptions();
+    });
+
+    // ========== 转换 ==========
+    convertBtn.addEventListener('click', async () => {
+        if (!loaded || !selectedFile || !formatSel.value) return;
+
+        convertBtn.disabled = true;
+        downloadArea.classList.remove('show');
+        setStatus('正在转换…', 'busy');
+        log('开始转换…');
+
+        const inputName = selectedFile.name;
+        const inputExt = inputName.includes('.') ? inputName.split('.').pop().toLowerCase() : 'bin';
+        const inputFSName = `input.${inputExt}`;
+
+        const outFormat = formatSel.value;
+        const outName = `output.${outFormat}`;
+        const videoCodec = codecSel.value;
+        const audioCodec = audioCodecSel.value;
+
+        const isVideoContainer = !!VIDEO_CODECS_FOR_CONTAINER[outFormat];
+        const isAudioContainer = AUDIO_FORMATS.some(f => f.value === outFormat);
+        const isImageContainer = IMAGE_FORMATS.some(f => f.value === outFormat);
+
+        try {
+            await ffmpeg.writeFile(inputFSName, await fetchFile(selectedFile));
+            log(`输入文件已写入：${inputFSName}`);
+
+            const args = ['-i', inputFSName];
+
+            if (isAudioContainer) {
+                args.push('-vn');
+                if (audioCodec && audioCodec !== 'copy') {
+                    args.push('-c:a', audioCodec);
+                    if (['libmp3lame', 'aac', 'libvorbis', 'libopus', 'ac3'].includes(audioCodec)) {
+                        args.push('-b:a', audioCodec === 'libopus' ? '128k' : '192k');
+                    }
+                } else if (audioCodec === 'copy') {
+                    args.push('-c:a', 'copy');
+                }
+                if (!audioCodec) args.push('-c:a', 'libmp3lame', '-b:a', '192k');
+            } else if (isImageContainer) {
+                args.push('-frames:v', '1');
+                if (outFormat === 'jpg') args.push('-q:v', '2');
+            } else if (outFormat === 'gif') {
+                args.push('-vf', 'fps=10,scale=480:-1:flags=lanczos', '-loop', '0');
+            } else if (isVideoContainer) {
+                if (videoCodec === 'copy') {
+                    args.push('-c:v', 'copy');
+                } else {
+                    args.push('-c:v', videoCodec);
+                    if (videoCodec !== 'gif') args.push('-pix_fmt', 'yuv420p');
+                    if (inputKind === 'image') args.push('-r', '25');
+                }
+                if (audioCodec === 'copy') {
+                    args.push('-c:a', 'copy');
+                } else if (audioCodec) {
+                    args.push('-c:a', audioCodec);
+                    if (['aac', 'libmp3lame', 'libvorbis', 'libopus', 'ac3'].includes(audioCodec)) {
+                        args.push('-b:a', audioCodec === 'libopus' ? '128k' : '192k');
+                    }
+                } else {
+                    const fallback = AUDIO_CODECS_FOR_CONTAINER[outFormat]?.[0]?.value || 'aac';
+                    if (fallback !== 'copy') {
+                        args.push('-c:a', fallback);
+                        if (['aac', 'libmp3lame', 'libvorbis', 'libopus', 'ac3'].includes(fallback)) {
+                            args.push('-b:a', '192k');
+                        }
+                    }
+                }
+            }
+
+            args.push(outName);
+
+            log('执行命令：ffmpeg ' + args.join(' '), 'cmd');
+            await ffmpeg.exec(args);
+
+            const data = await ffmpeg.readFile(outName);
+            if (!data || data.length === 0) throw new Error('输出文件为空，转换可能失败');
+
+            const mimeMap = {
+                mp4:'video/mp4', webm:'video/webm', mkv:'video/x-matroska',
+                mov:'video/quicktime', avi:'video/x-msvideo', flv:'video/x-flv',
+                ts:'video/mp2t', ogv:'video/ogg', gif:'image/gif',
+                mp3:'audio/mpeg', wav:'audio/wav', aac:'audio/aac',
+                flac:'audio/flac', ogg:'audio/ogg', opus:'audio/opus',
+                m4a:'audio/mp4', png:'image/png', jpg:'image/jpeg',
+                webp:'image/webp', bmp:'image/bmp',
+            };
+            const mime = mimeMap[outFormat] || 'application/octet-stream';
+
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = URL.createObjectURL(new Blob([data.buffer], { type: mime }));
+
+            downloadLink.href = objectUrl;
+            const baseName = inputName.includes('.') ? inputName.substring(0, inputName.lastIndexOf('.')) : inputName;
+            downloadLink.download = `${baseName}.${outFormat}`;
+            downloadArea.classList.add('show');
+
+            setStatus('转换完成', 'ready');
+            log(`✅ 转换完成：${outName}（${(data.length / 1024 / 1024).toFixed(2)} MB）`, 'ok');
+
+            try { await ffmpeg.deleteFile(outName); } catch (_) {}
+        } catch (err) {
+            setStatus('转换失败', 'error');
+            log('❌ 转换失败：' + err.message, 'err');
+            console.error(err);
+        } finally {
+            convertBtn.disabled = false;
+            updateButton();
+        }
+    });
+
+    // 启动时加载核心
+    loadFFmpeg();
+</script>
+</body>
+</html>
